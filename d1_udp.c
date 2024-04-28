@@ -12,6 +12,8 @@
 #include <netdb.h>
 
 #include "d1_udp.h"
+
+#define MAX_PACKET_SIZE 1024
 //./d1_test_client localhost 1000
 
 //helping methods
@@ -24,57 +26,13 @@
 * #define SEQNO           (1 << 7) if flag_data is not set and seqNO is set, this must be a connect packet
 * #define ACKNO           (1 << 0) if Flag_ack is null and Ackno is 1 this must be a disconnect packet
 */
-struct packet{ //this is the packet that will be sent beetween peers
-    struct D1Header header;
-    char* buffer; //in order to keep packet equal or under 1024 byte
-};
-
-/*
-uint16_t calculate_checksum(struct D1Header* header, char* data, size_t data_size) {
-    printf("%d header size in checksum\n", sizeof(D1Header));
-    printf("%d message size \n", data_size);
-    uint16_t checksum = 0;
-    uint8_t odd = 0;
-    uint8_t even = 0;
-    //size_t bufferWithPaddingSize = 
-    uint8_t *buffer = (char* )calloc(1, sizeof(D1Header) + data_size);
-    if (data_size%2==1){
-        free(buffer);
-        uint8_t *buffer = (char* )calloc(1, sizeof(D1Header) + data_size +1);
-    }
-    
-    
-    memcpy(buffer, header, sizeof(D1Header));
-    memcpy(buffer + sizeof(D1Header), data, data_size);// --
-    printf("data : %.*s \n",data_size,data);
-
-
-    int totalPacketSize = sizeof(header) + data_size;
-    if (totalPacketSize%2==1){
-        totalPacketSize+=1;
-    }
-    for (int i = 0; i< (totalPacketSize); i++ ){
-        if (i%2 == 0){
-            even ^= buffer[i];
-            printf("even");
-        }
-        else{
-            odd ^= buffer[i];
-            printf("odd");
-        }
-    }
-    checksum = (odd << 8 ) | even;
-    free(buffer);
-    return checksum;
-}
-*/
 uint16_t calculate_checksum(struct D1Header* header, char* data, size_t data_size) {
     //printf("%d header size in checksum\n", sizeof(D1Header));
     //printf("%d message size \n", data_size);
-    
+
     uint8_t odd = 0;
     uint8_t even = 0;
-  
+    
     char *buffer = (char* )calloc(1, sizeof(D1Header) + data_size );
     
     memcpy(buffer, header, sizeof(D1Header));
@@ -124,7 +82,7 @@ D1Peer* d1_create_client( )
         close(socketfd);
         return NULL;
     }
-
+    
     peer->socket =socketfd;
     peer->next_seqno = 0;
     
@@ -182,13 +140,64 @@ int d1_get_peer_info(struct D1Peer* peer, const char* peername, uint16_t server_
 
 int d1_recv_data( struct D1Peer* peer, char* buffer, size_t sz )
 {
+    /** Call this to wait for a single packet from the peer. The function checks if the
+ *  size indicated in the header is correct and if the checksum is correct.
+ *  In case of success, remove the D1 header and store only the payload in the buffer
+ *  that is passed a parameter. The size sz is the size of the buffer provided by the
+ *  caller.
+ *  If size or checksum are incorrect, an ACK with the opposite value is sent (this should
+ *  trigger the sender to retransmit).
+ *  In other cases, an error message is printed and a negative number is returned to the
+ *  calling function.
+ *  Returns the number of bytes received as payload in case of success, and a negative value
+ *  in case of error. Empty data packets are allowed, and a return value of 0 is therefore
+ *  valid.
+ */
+    char* packet = (char*)malloc(sz);
+    int received_bytes = recv(peer->socket, packet, sz, 0);
 
-    int received_bytes = recv(peer->socket, buffer, sizeof(D1Header) + sz, 0);
     if (received_bytes < 0) {
         perror("Feil ved mottak av data");
         return -1;
     }
 
+
+    struct D1Header *header = (D1Header *)packet;
+    
+    
+    uint16_t packetChecksum = ntohs(header->checksum);
+    header->checksum = 0;
+
+    uint16_t checksum = calculate_checksum(header, packet+ sizeof(D1Header), received_bytes-sizeof(D1Header));
+
+    header->size = ntohl(header->size);
+    header->flags = ntohs(header->flags);
+    
+    if (packetChecksum==checksum){
+        printf("\n riktig checksum \n");
+        
+
+         
+        printf("recieved bytes %d", received_bytes);
+        if (header->size == (uint32_t) received_bytes){
+            printf("\n Korrekt size på pakke \n");
+            //remove header and store in buffer
+            memcpy(buffer, packet+ sizeof(D1Header), received_bytes-sizeof(D1Header) );
+            d1_send_ack(peer, (header->flags &SEQNO));
+            
+        }
+        else{ 
+            printf(" \n Feil size på pakke \n");
+            d1_send_ack(peer, !(header->flags &SEQNO));//send ack with oposite ackno
+        }
+    }
+    else{
+        printf(" \n feil checksum \n");
+        d1_send_ack(peer, !(header->flags &SEQNO));
+        //send ack med motsatt seqno    
+    }
+    
+    free(header);
     // Data er mottatt og lagret i bufferet
     return received_bytes;
 
@@ -200,9 +209,28 @@ void d1_send_ack( struct D1Peer* peer, int seqno )
 {
     /* implement this */
     /** Send an ACK for the given sequence number.
-     * 
-     * I have to send an ACK package 
- */
+    */
+
+   struct D1Header *header = (D1Header *) calloc(1, sizeof(D1Header));
+   header->flags |= FLAG_ACK;
+   if (seqno > 0){ //SEQNO ER MIDLERTIDIG FIKS FOR AT SEQNO 1 NOEN GANGER BLIR MER ENN 1, KANSJE NOE PROBLEM MED CASTING/SAMMENIKNING MELLOM UNSIGNED OG SIGNED INT?
+    header->flags |= ACKNO;
+   }
+
+    
+    header->size = htonl(sizeof(D1Header));
+    header->flags = htons(header->flags);
+
+    
+    uint16_t checksum = calculate_checksum(header, NULL, 0);
+    header->checksum = htons(checksum);
+     int sent_bytes = sendto(peer->socket, header, sizeof(D1Header),0 ,(struct sockaddr *)&peer->addr, sizeof(peer->addr));
+     printf("ack %d sent \n", seqno);//OOOPS HER ER DET EN FEIL VED AT SEQNO BLIR MER ENN 1, ALTSÅ 128 I D1TESTCLIENT. DET ER MIDLERTIDIG FIKSET VED Å SETTE SEQNO>0 I IFSJEKKEN OVER
+     
+    if (sent_bytes<0){
+        printf("error");
+
+    }
 
 }
 
@@ -221,17 +249,15 @@ int d1_wait_ack( D1Peer* peer, char* buffer, size_t sz )
  */
     while(1){
         struct D1Header *recvedData = (D1Header*)malloc(sizeof(D1Header));
-        //0 terminating buffer
-        //memset(recvedData, "\0",sizeof(D1Header)+ sz+1 );
-printf("Før recvfrom\n");
-uint8_t recvedBytes = recv(peer->socket,  recvedData, sizeof(D1Header),0);
-printf("Etter recvfrom\n");
+    
+        uint8_t recvedBytes = recv(peer->socket,  recvedData, sizeof(D1Header),0);
+    
         if (recvedBytes<0){
             printf("Error");
             return -1;
         }
-        printf("received %d \n", recvedBytes);
-printf("Innhold av mottatt data: %s\n", recvedData);
+        //printf("received %d \n", recvedBytes);
+    //printf("Innhold av mottatt data: %s\n", recvedData);
 
         D1Header* receivedHeader = (D1Header*)recvedData;
         receivedHeader->flags = ntohs(receivedHeader->flags);
@@ -240,29 +266,35 @@ printf("Innhold av mottatt data: %s\n", recvedData);
         
         if (receivedHeader->flags & FLAG_DATA){
             printf("DEtte ER EN DATA PACKET IKKE ACK /n");
-            return -1;
+          
         }
         if (receivedHeader->flags & FLAG_ACK){
-            printf("ACK packet funnet \n");
-            uint16_t ack_seqno = (receivedHeader->flags & ACKNO) ? 1 : 0;
+            //printf("ACK packet funnet \n");
+            int ack_seqno =receivedHeader->flags & ACKNO;
             if (peer->next_seqno == ack_seqno){ //dersom peer sin seqno == flag seqno
                 peer->next_seqno = !peer->next_seqno; // 0->1 or 1->0
+
+                printf("korekt seqno: %d \n", ack_seqno);
+                
                 return 0;
             }
             else {
-                //d1_send_data(peer, buffer, sz);
-                return 0;
+                printf("FEIL seqno");
+                d1_send_data(peer, buffer, sz);
+             
             }
 
 
         }
         else{
             printf("fant ikke ACK pakke \n");
-            //d1_send_data(peer, buffer, sz);
-            return 0;
+            d1_send_data(peer, buffer, sz);
+          
         }
+         free(recvedBytes);
+         free(receivedHeader);
     }
-    
+   
 
     return 0;
 }
@@ -277,7 +309,7 @@ int d1_send_data( D1Peer* peer, char* buffer, size_t sz )
  *  it to the peer.
  */
 
-   printf("sending \n");
+    //printf("sending \n");
 
 
     
@@ -286,11 +318,14 @@ int d1_send_data( D1Peer* peer, char* buffer, size_t sz )
 
    
 
-    uint32_t totalPcketSize =  sizeof(D1Header);
+    uint32_t totalPcketSize =  sizeof(D1Header)+sz;
 
 
-    header->flags = FLAG_DATA;
-    header->flags |= peer->next_seqno << 7;
+    header->flags |= FLAG_DATA;
+    if (peer->next_seqno==1){
+        header->flags |= SEQNO;
+    }
+    
     header->size = htonl(totalPcketSize);
     header->flags = htons(header->flags);
 
@@ -310,7 +345,7 @@ int d1_send_data( D1Peer* peer, char* buffer, size_t sz )
   
     memcpy(data, header, sizeof(D1Header));
     memcpy(data+sizeof(D1Header), buffer, sz);
-
+    printf("sending package \n");
     int sent_bytes = sendto(peer->socket, data, totalPcketSize,0 ,(struct sockaddr *)&peer->addr, sizeof(peer->addr));
     d1_wait_ack(peer, buffer,sz);
     //printf("sent_bytes %d \n", sent_bytes);
@@ -319,7 +354,7 @@ int d1_send_data( D1Peer* peer, char* buffer, size_t sz )
     free(data);
 
 
-    printf("ack is sent");
+    //printf("ack is sent");
 
     return sent_bytes;
 }
