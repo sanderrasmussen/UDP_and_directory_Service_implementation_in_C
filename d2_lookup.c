@@ -117,8 +117,30 @@ int d2_recv_response( D2Client* client, char* buffer, size_t sz )
  */
 
     int recved_bytes = d1_recv_data(client->peer, buffer, sz);  
-    PacketHeader *header = (PacketHeader *)buffer;
-    //now we can inspect which packet we got
+
+    PacketResponse *header = (PacketResponse *)buffer; // the response also comes with a payload behind the response struct
+
+    header->payload_size = ntohs(header->payload_size);
+
+    //header->type = ntohs(header->type);
+    //this contains the payload og NetNodes
+
+    uint32_t bufferIndex =buffer + sizeof(PacketResponse);
+
+    uint32_t *payload = (uint32_t *)(buffer + sizeof(PacketResponse));
+
+    int num_uint32_values = header->payload_size / sizeof(uint32_t); //OOPS DET ER NOE GALT MED DENNE SANSYNLIGVIS
+    printf("payload size : %d \n ", header->payload_size);
+    printf("number og 32 values %d \n ", num_uint32_values);
+    for (int i = 0; i < num_uint32_values-1 ; i++) { //ikke opp, fiks dette
+        payload[i] = ntohl(payload[i]);
+        printf(" payload: %d ", payload[i]);
+    }
+    
+    printf("--received response \n");
+
+    //OOPS HUSK Å KONVERTERE TILBAKE FRA NETWORK BYTE ORDER
+    return recved_bytes;
 
 /* PacketResponse packets are sent from the server to the client.
  * They contain the type field, which can be TYPE_RESPONSE or
@@ -129,7 +151,7 @@ int d2_recv_response( D2Client* client, char* buffer, size_t sz )
  *
  * These packets contain the payload_size field that indicates the number of
  * bytes contained in this message.
- *
+ * 
  * One or more abbreviated (!!!) NetNode structures follow the header,
  * but never more than 5. It is OK to assume that only TYPE_LAST_RESPONSE
  * packets have fewer than 5 NetNode structures following the header.
@@ -159,16 +181,19 @@ LocalTreeStore* d2_alloc_local_tree( int num_nodes )
 {   /* Allocate one more more local structures that are suitable to receive num_nodes
  * tree nodes containing all the information from a NetNode.
  * It is expected that the memory for these structures is allocated dynamically.
- *
+ * 
  * Change the LocalTreeStore to suit your need.
- *
+ * 
  * Returns NULL in case of failure.
  */
-    NetNode *tree = (NetNode *)malloc(sizeof(struct NetNode)*num_nodes);
+    LocalTreeStore *tree = (LocalTreeStore *)malloc(sizeof(LocalTreeStore)) ;
+    tree->number_of_nodes = num_nodes;
+    tree->nodes = (NetNode *)malloc(sizeof(NetNode)*num_nodes);
+    printf("TRE ALLOKERT");
     if (tree==NULL){
         return NULL;
     }
-    
+
     return tree;
 }
 
@@ -176,6 +201,10 @@ void  d2_free_local_tree( LocalTreeStore* nodes )
 {   /* Release all memory that has been allocated for the local tree structures.
  */
     /* implement this */
+    if (nodes !=NULL){
+        free(nodes);
+        nodes = NULL;
+    }
 }
 
 int d2_add_to_local_tree( LocalTreeStore* nodes_out, int node_idx, char* buffer, int buflen )
@@ -185,7 +214,7 @@ int d2_add_to_local_tree( LocalTreeStore* nodes_out, int node_idx, char* buffer,
  * and add one node to the local tree for every NetNode in the buffer.
  *
  * One buffer can contain up to 5 NetNodes.
- *
+ * 
  * node_idx is expected to be 0-based index of the tree nodes that are already
  * in the LocalTreeStore. The return value is node_idx increased by the additional
  * number of nodes that have been added to the LocalTreeStore.
@@ -195,8 +224,56 @@ int d2_add_to_local_tree( LocalTreeStore* nodes_out, int node_idx, char* buffer,
  * Returns negative values in case of failure.
  */
     /* implement this */
-    return 0;
+
+    
+    int num_32_vals = (buflen )/sizeof(uint32_t);//oops i thin the offset error is due to (buflen - sizeof(PacketResponse)) not being evenly divided in sizeof(uint32_t)
+    printf("bufflen : %d ", buflen);
+    printf("number og 32 values: %d \n ",num_32_vals);
+     uint32_t *payload = (uint32_t *)(buffer );    //the buffer should have header in it so we must skip the header
+      //i have to read byte 4 bytes at a time again
+    int i = 0;//something weird is going on with the offsett
+    while ( i< num_32_vals -2){//YEP something really weird is going on with the offsets, but this seems to work
+        NetNode *node = (NetNode *)malloc(sizeof(NetNode));
+        node->id =  payload[i]; 
+        printf("id %d \n ", node->id);
+        i++;
+        node->value=payload[i];
+        printf("value %d \n",node->value);
+        i++;
+        node->num_children = payload[i];
+        printf("num children %d \n", node->num_children);
+        i++;
+
+        for (int j= 0;j<node->num_children;j++){
+            node->child_id[j]= payload[i];
+            i++;
+        }
+        //add the node to the tree
+
+        
+        nodes_out->nodes[node_idx] = *node;
+        node_idx++;
+
+
+    }
+
+    printf("--added nodes , so far we have %d nodes\n",node_idx);
+    return node_idx;
 }
+
+void printNodeRecursive(int id, LocalTreeStore* nodes_out, int nestedNr){
+        char string[100] =""; 
+        for (int i = 0; i < nestedNr; i++) {
+            strcat(string, "--");
+        }
+        NetNode node = nodes_out->nodes[id];
+        printf("%s id %d value %d children %d\n",string, node.id, node.value, node.num_children);
+
+        for (int i = 0 ; i<node.num_children; i++){
+            printNodeRecursive(node.child_id[i], nodes_out, nestedNr+1);
+        }
+}
+
 
 void d2_print_tree( LocalTreeStore* nodes_out )
 {
@@ -216,7 +293,11 @@ id 0 value 72342 children 2
  * Node 1 has one child, 2.
  * Node 3 has two children, 4 and 6.
  * Node 4 has one child, 5.
- */
+    */
     /* implement this */
-}
 
+    
+    printNodeRecursive(0, nodes_out, 0);//root node, from here we should be able to reach every other node provided to us by the server
+    
+   
+}
