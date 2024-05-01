@@ -196,8 +196,8 @@ int d1_recv_data( struct D1Peer* peer, char* buffer, size_t sz )
         d1_send_ack(peer, !(header->flags &SEQNO));
         //send ack med motsatt seqno    
     }
+    free(packet);
     
-    free(header);
     // Data er mottatt og lagret i bufferet
     return received_bytes;
 
@@ -231,7 +231,7 @@ void d1_send_ack( struct D1Peer* peer, int seqno )
         printf("error");
 
     }
-
+    free(header);
 }
 
 
@@ -276,6 +276,7 @@ int d1_wait_ack( D1Peer* peer, char* buffer, size_t sz )
 
                 printf("korekt seqno: %d \n", ack_seqno);
                 
+                free(recvedData);
                 return 0;
             }
             else {
@@ -291,8 +292,8 @@ int d1_wait_ack( D1Peer* peer, char* buffer, size_t sz )
             d1_send_data(peer, buffer, sz);
           
         }
-         free(recvedBytes);
-         free(receivedHeader);
+    
+         free(recvedData);
     }
    
 

@@ -42,8 +42,7 @@ D2Client* d2_client_delete( D2Client* client )
 
     /* implement this */
      if (client != NULL){
-        close(client->peer->socket); //closing the socket if peer is not NULL
-        free(client->peer); //freeing pointer 
+        d1_delete(client->peer);
         free(client);
         client = NULL;
     }
@@ -68,7 +67,7 @@ int d2_send_request( D2Client* client, uint32_t id )
     request->id = htonl(request->id);
     //int sent_bytes = sendto(client->peer->socket, request, sizeof(PacketRequest),0 ,(struct sockaddr *)&client->peer->addr, sizeof(client->peer->addr));
     int sent_bytes = d1_send_data(client->peer,request, sizeof(PacketRequest));
-  
+    free(request);
     if (sent_bytes<=0){
         return -1;
     }
@@ -98,6 +97,7 @@ int d2_recv_response_size( D2Client* client )
     PacketResponseSize* response = buffer;
    
     int size =ntohs(response->size);
+    free(buffer);
     return size;
 }
 
@@ -200,8 +200,10 @@ LocalTreeStore* d2_alloc_local_tree( int num_nodes )
 void  d2_free_local_tree( LocalTreeStore* nodes )
 {   /* Release all memory that has been allocated for the local tree structures.
  */
-    /* implement this */
+    
+    //freeing the tree
     if (nodes !=NULL){
+        free(nodes->nodes);
         free(nodes);
         nodes = NULL;
     }
@@ -253,7 +255,7 @@ int d2_add_to_local_tree( LocalTreeStore* nodes_out, int node_idx, char* buffer,
         
         nodes_out->nodes[node_idx] = *node;
         node_idx++;
-
+        free(node);
 
     }
 
