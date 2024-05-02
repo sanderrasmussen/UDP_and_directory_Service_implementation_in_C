@@ -1,3 +1,6 @@
+Kandidatnummer : 15140
+Fagkode: in2140
+
 Til sensor:
 Jeg kommer i denne readme.txt filen til å fokusere mest på de tingene som jeg slet mest med og som jeg trengte å analysere mest.
 
@@ -90,4 +93,4 @@ d2_lookup.c :
     Jeg har en nestedNr parameter som jeg øker med 1 hver gang rekursjonen går ett lag dypere.
     Siden alle nodene lagres på posisjonen i arrayet som er lik den faktiske id til noden så kan jeg får hvert barn av noden printe ut node id = node.child_id[i] som blir posisjonen i arrayet. 
     For hvert nestedNr printes det ut "--" før nodens info og \n til slutten etter noden, på denne måten trenger jeg ikke lage en streng med fast lengde som kun kan representere en viss mengde barn.
-    
+

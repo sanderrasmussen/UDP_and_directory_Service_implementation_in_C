@@ -1,7 +1,10 @@
 /* ======================================================================
  * YOU ARE EXPECTED TO MODIFY THIS FILE.
  * ====================================================================== */
-
+/*
+Kandidatnummer : 15140
+Fagkode: in2140
+*/
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
