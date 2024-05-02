@@ -9,12 +9,16 @@
 
 #include "d2_lookup.h"
 
+#define ALLOC_ERROR -10
+
 D2Client* d2_client_create( const char* server_name, uint16_t server_port )
 {
    
     D2Client *client = (D2Client *)malloc(sizeof(D2Client));
-    if (client==NULL){
-        return NULL;
+     if (client == NULL) {
+        fprintf(stderr, "Allocation of memory failed \n");
+        free(client);
+        return ALLOC_ERROR;
     }
     //creating d1 client
     D1Peer *d1peer = d1_create_client();
@@ -41,6 +45,11 @@ int d2_send_request( D2Client* client, uint32_t id )
 {
     //making packet request with the provided id and setting type and id in network order with htons and htonl
     PacketRequest *request = (PacketRequest *) calloc(1, sizeof(PacketRequest));
+     if (request == NULL) {
+        fprintf(stderr, "Allocation of memory failed \n");
+        free(request);
+        return ALLOC_ERROR;
+    }
     request->type = TYPE_REQUEST;
     request->type = htons(request->type);
     request->id = id;
@@ -58,6 +67,11 @@ int d2_recv_response_size( D2Client* client )
 {
 
     char* buffer= (char*)malloc(sizeof(PacketResponseSize));
+    if (buffer == NULL) {
+        fprintf(stderr, "Allocation of memory failed \n");
+        free(buffer);
+        return ALLOC_ERROR;
+    }
     int recved_bytes = d1_recv_data(client->peer, buffer, 1024);
 
     if (recved_bytes<=0){
@@ -98,8 +112,18 @@ int d2_recv_response( D2Client* client, char* buffer, size_t sz )
 LocalTreeStore* d2_alloc_local_tree( int num_nodes )
 {   
     LocalTreeStore *tree = (LocalTreeStore *)malloc(sizeof(LocalTreeStore)) ;
+    if (tree == NULL) {
+        fprintf(stderr, "Allocation of memory failed \n");
+        free(tree);
+        return ALLOC_ERROR;
+    }
     tree->number_of_nodes = num_nodes;
     tree->nodes = (NetNode *)malloc(sizeof(NetNode)*num_nodes); //allocating space for all expected nodes.
+    if (tree->nodes == NULL) {
+        fprintf(stderr, "Allocation of memory failed \n");
+        free(tree->nodes);
+        return ALLOC_ERROR;
+    }
     printf("Tree allocated \n ");
     if (tree==NULL){
         return NULL;
@@ -131,6 +155,11 @@ int d2_add_to_local_tree( LocalTreeStore* nodes_out, int node_idx, char* buffer,
     int i = 0;
     while ( i< num_32_vals -2){//YEP something really weird is going on with the offsets, but this seems to work, i still dont know why i need the -2 in  (num_32_vals-2) but this seems to work on every test i have done so far on every id request
         NetNode *node = (NetNode *)malloc(sizeof(NetNode));
+        if (node == NULL) {
+            fprintf(stderr, "Allocation of memory failed \n");
+            free(node);
+            return ALLOC_ERROR;
+        }
         node->id =  payload[i]; //setting first uint32 to id and so on for all the fields in NetNode untill done, then create another node if there is still more to read
         //printf("id %d \n ", node->id); //all prints below are for debugging
         i++;

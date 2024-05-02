@@ -14,6 +14,7 @@
 #include "d1_udp.h"
 
 #define MAX_PACKET_SIZE 1024
+#define ALLOC_ERROR -10;
 
 //./d1_test_client localhost 1000
 
@@ -28,6 +29,11 @@ uint16_t calculate_checksum(struct D1Header* header, char* data, size_t data_siz
     
     //creating buffer and merging header and data together into it
     char *buffer = (char* )calloc(1, sizeof(D1Header) + data_size ); 
+    if (buffer == NULL) {
+        fprintf(stderr, "Allocation of memory failed \n");
+        free(buffer);
+        return ALLOC_ERROR;
+    }
     memcpy(buffer, header, sizeof(D1Header));
     memcpy(buffer + sizeof(D1Header), data, data_size); 
 
@@ -59,11 +65,12 @@ D1Peer* d1_create_client( )
     D1Peer* peer = (D1Peer*)calloc(1, (sizeof(D1Peer)));
 
     if (peer == NULL){
-        printf("Could not allocate memory for D1Peer struct");
+        fprintf(stderr,"Could not allocate memory for D1Peer struct \n");
         close(socketfd);
-        return NULL;
+        free(peer);
+        return ALLOC_ERROR;
     }
-
+    
     peer->socket =socketfd;
     peer->next_seqno = 0;  
 
@@ -130,6 +137,11 @@ int d1_recv_data( struct D1Peer* peer, char* buffer, size_t sz )
  *  valid. 
  */
     char* packet = (char*)malloc(sz); 
+    if (packet == NULL) {
+        fprintf(stderr, "Allocation of memory failed \n");
+        free(packet);
+        return ALLOC_ERROR;
+    }
     int received_bytes = recv(peer->socket, packet, sz, 0); //storing data in packet buffer
 
     if (received_bytes < 0) {
@@ -173,12 +185,17 @@ int d1_recv_data( struct D1Peer* peer, char* buffer, size_t sz )
 
 
 void d1_send_ack( struct D1Peer* peer, int seqno )
-{
-   struct D1Header *header = (D1Header *) calloc(1, sizeof(D1Header));
-   header->flags |= FLAG_ACK;
-   if (seqno > 0){ //i had problems with seqno being either 128 or 0, these are still two values(either positive or negativ) so the ACKNO flag is set if seqno is bigger than 0
-    header->flags |= ACKNO;
-   }
+{  
+    struct D1Header *header = (D1Header *) calloc(1, sizeof(D1Header));
+    if (header == NULL) {
+        fprintf(stderr, "Allocation of memory failed \n");
+        free(header); 
+        return;  //this is a void funtion so just returning
+    }
+    header->flags |= FLAG_ACK;
+    if (seqno > 0){ //i had problems with seqno being either 128 or 0, these are still two values(either positive or negativ) so the ACKNO flag is set if seqno is bigger than 0
+        header->flags |= ACKNO;
+    }
 
     header->size = htonl(sizeof(D1Header));
     header->flags = htons(header->flags);
@@ -198,6 +215,11 @@ int d1_wait_ack( D1Peer* peer, char* buffer, size_t sz )
 {
     //make a new buffer for receiving ack
     struct D1Header *recvedData = (D1Header*)malloc(sizeof(D1Header));
+    if (recvedData == NULL) {
+        fprintf(stderr, "Allocation of memory failed \n");
+        free(recvedData);
+        return ALLOC_ERROR;
+    }
     uint8_t recvedBytes = recv(peer->socket,  recvedData, sizeof(D1Header),0); 
 
     if (recvedBytes<0){
@@ -248,6 +270,11 @@ int d1_send_data( D1Peer* peer, char* buffer, size_t sz )
     }
 
     D1Header *header = (D1Header *)calloc(1,sizeof(D1Header));
+    if (header == NULL) {
+        fprintf(stderr, "Allocation of memory failed \n");
+        free(header);
+        return ALLOC_ERROR;
+    }
     uint32_t totalPcketSize =  sizeof(D1Header)+sz;
 
     header->flags |= FLAG_DATA; //make it data packet
@@ -263,6 +290,11 @@ int d1_send_data( D1Peer* peer, char* buffer, size_t sz )
     header->checksum = htons(checksum); 
 
     char *data = (char *)calloc(1, totalPcketSize); 
+    if (data == NULL) {
+        fprintf(stderr, "Allocation of memory failed \n");
+        free(data);
+        return ALLOC_ERROR;
+    }
     //copying header and buffer into data buffer to be sendt
     memcpy(data, header, sizeof(D1Header));
     memcpy(data+sizeof(D1Header), buffer, sz);
