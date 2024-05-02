@@ -246,7 +246,7 @@ int d1_wait_ack( D1Peer* peer, char* buffer, size_t sz )
             printf("Correct seqno: %d \n", ack_seqno);
             free(recvedData);
 
-            return 0;
+            return 1;
         }
         else {
             printf("Wrong seqno \n ");
@@ -259,7 +259,7 @@ int d1_wait_ack( D1Peer* peer, char* buffer, size_t sz )
     }
     free(recvedData);
 
-    return 0;
+    return 1;
 }
 
 int d1_send_data( D1Peer* peer, char* buffer, size_t sz )
@@ -278,7 +278,7 @@ int d1_send_data( D1Peer* peer, char* buffer, size_t sz )
     uint32_t totalPcketSize =  sizeof(D1Header)+sz;
 
     header->flags |= FLAG_DATA; //make it data packet
-    if (peer->next_seqno==1){
+    if (peer->next_seqno>0){
         header->flags |= SEQNO; //if seqno = 1 set SEQNO flag
     }
     

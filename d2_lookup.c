@@ -15,10 +15,10 @@ D2Client* d2_client_create( const char* server_name, uint16_t server_port )
 {
    
     D2Client *client = (D2Client *)malloc(sizeof(D2Client));
-     if (client == NULL) {
+    if (client == NULL) {
         fprintf(stderr, "Allocation of memory failed \n");
         free(client);
-        return ALLOC_ERROR;
+        return NULL;
     }
     //creating d1 client
     D1Peer *d1peer = d1_create_client();
@@ -74,7 +74,7 @@ int d2_recv_response_size( D2Client* client )
     }
     int recved_bytes = d1_recv_data(client->peer, buffer, 1024);
 
-    if (recved_bytes<=0){
+    if (recved_bytes<0){
         return -1;
     }
     //this is not nessecery as i could have used the buffer directly but i think it is easier to read
@@ -90,7 +90,9 @@ int d2_recv_response_size( D2Client* client )
 int d2_recv_response( D2Client* client, char* buffer, size_t sz )
 {
     int recved_bytes = d1_recv_data(client->peer, buffer, sz);  
-
+    if (recved_bytes<0){
+        return -1;
+    }
     PacketResponse *header = (PacketResponse *)buffer; // casting to packetResponse, the buffer also comes with a payload behind the response struct
 
     header->payload_size = ntohs(header->payload_size);
@@ -115,19 +117,17 @@ LocalTreeStore* d2_alloc_local_tree( int num_nodes )
     if (tree == NULL) {
         fprintf(stderr, "Allocation of memory failed \n");
         free(tree);
-        return ALLOC_ERROR;
+        return NULL;
     }
     tree->number_of_nodes = num_nodes;
     tree->nodes = (NetNode *)malloc(sizeof(NetNode)*num_nodes); //allocating space for all expected nodes.
     if (tree->nodes == NULL) {
         fprintf(stderr, "Allocation of memory failed \n");
         free(tree->nodes);
-        return ALLOC_ERROR;
-    }
-    printf("Tree allocated \n ");
-    if (tree==NULL){
         return NULL;
     }
+    printf("Tree allocated \n ");
+   
     return tree;
 }
 
@@ -184,12 +184,12 @@ int d2_add_to_local_tree( LocalTreeStore* nodes_out, int node_idx, char* buffer,
 }
 
 void printNodeRecursive(int id, LocalTreeStore* nodes_out, int nestedNr){ // i decided to use recursion for readability
-        char string[100] ="";  //assuming we will never have more than 50 nested nodes when printing
-        for (int i = 0; i < nestedNr; i++) {
-            strcat(string, "--"); //for every nesting we add -- to the print
+
+        for (int i = 0; i < nestedNr; i++) {//printing out "--" for every nestedNr wihtout \n
+            printf("--");
         }
         NetNode node = nodes_out->nodes[id]; //as mention above, this is like a hashmap since the server gives the nodes in a buffer in rising order from 0 to 1,2,3,4,5 and so on
-        printf("%s id %d value %d children %d\n",string, node.id, node.value, node.num_children);
+        printf(" id %d value %d children %d \n", node.id, node.value, node.num_children);
 
         //recursively printig out all the children of the node.
         for (int i = 0 ; i<node.num_children; i++){
